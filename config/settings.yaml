@@ -29,6 +29,8 @@ nip05:
   domainWhitelist:
     - sansbank.org
     - nostr.sansbank.org
+    - sansbank.dev
+    - nostr.sansbank.dev
   domainBlacklist: []
 
 # NIP-42 left disabled by policy decision.

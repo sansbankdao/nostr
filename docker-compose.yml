@@ -36,7 +36,7 @@ services:
         ipv4_address: 172.30.0.5
 
   nostream:
-    image: ghcr.io/cameri/nostream:v3.0.0
+    image: ghcr.io/cameri/nostream@sha256:de86cc751e46bd2b42562b272e3b9bad65284a04189510d844e8a223d762b856
     container_name: nostream
     env_file: .env
     environment:
@@ -123,7 +123,7 @@ services:
         ipv4_address: 172.30.0.4
 
   nostream-migrate:
-    image: ghcr.io/cameri/nostream:v3.0.0
+    image: ghcr.io/cameri/nostream@sha256:de86cc751e46bd2b42562b272e3b9bad65284a04189510d844e8a223d762b856
     container_name: nostream-migrate
     user: node:node
     command: ['node_modules/.bin/knex', 'migrate:latest']

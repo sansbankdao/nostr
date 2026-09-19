@@ -1,15 +1,50 @@
 # Caddyfile
 #
 # TLS termination + reverse proxy for the Sansbank DAO shared Nostr relay.
-# - Terminates HTTPS for nostr.sansbank.org using Let's Encrypt (ACME).
+# - Terminates HTTPS for nostr.sansbank.org (canonical) and its alias
+#   nostr.sansbank.dev using Let's Encrypt (ACME); Caddy issues one
+#   certificate per hostname.
 # - Serves the NIP-05 document at /.well-known/nostr.json.
 # - Reverse-proxies every other request (including the Nostr WebSocket) to nostream.
+#
+# Both site blocks are kept byte-identical except for the hostname; edit both
+# when the relay's HTTP behaviour changes.
 
 {
 	email hello@sansbank.org
 }
 
 nostr.sansbank.org {
+	encode zstd gzip
+
+	# NIP-05 identity document (served statically, not by the relay).
+	handle /.well-known/nostr.json {
+		root * /srv
+		file_server
+	}
+
+	# Relay liveness / readiness probes (NIP-11 + admin docs).
+	handle /healthz {
+		reverse_proxy nostream:8008
+	}
+	handle /readyz {
+		reverse_proxy nostream:8008
+	}
+
+	# Everything else: Nostr NIP-01 WebSocket + NIP-11 document.
+	handle {
+		reverse_proxy nostream:8008
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20MiB
+			roll_keep 10
+		}
+	}
+}
+
+nostr.sansbank.dev {
 	encode zstd gzip
 
 	# NIP-05 identity document (served statically, not by the relay).
