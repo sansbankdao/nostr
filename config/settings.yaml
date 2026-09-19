@@ -1,0 +1,64 @@
+# config/settings.yaml
+#
+# nostream override file. Deep-merged over resources/default-settings.yaml
+# shipped inside the ghcr.io/cameri/nostream:v3.0.0 image.
+# Installed to .nostr/settings.yaml on the server by scripts/deploy.sh.
+#
+# Policy: open read, NIP-05-gated write. Only authors with a verified
+# NIP-05 identifier at an allow-listed domain may publish.
+
+info:
+  relay_url: wss://nostr.sansbank.org
+  name: nostr.sansbank.org
+  description: Sansbank DAO shared Nostr relay.
+  contact: mailto:hello@sansbank.org
+  terms_of_service: https://sansbank.org/terms
+
+payments:
+  enabled: false
+
+# NIP-05 verification of event authors. `enabled` REQUIRES NIP-05 for
+# publishing (kind 0 metadata excepted) and gates writes to the domains in
+# domainWhitelist. The identifiers must resolve against a live
+# /.well-known/nostr.json served by the identifier's domain.
+nip05:
+  mode: enabled
+  verifyExpiration: 604800000
+  verifyUpdateFrequency: 86400000
+  maxConsecutiveFailures: 20
+  domainWhitelist:
+    - sansbank.org
+    - nostr.sansbank.org
+  domainBlacklist: []
+
+# NIP-42 left disabled by policy decision.
+nip42:
+  authRequired: false
+  restrictedReads:
+    enabled: false
+
+# Trust the Caddy container (172.30.0.5) and the docker gateway (172.30.0.1)
+# to set the client IP via X-Forwarded-For, so per-IP rate limits see real
+# client addresses rather than the proxy.
+network:
+  remoteIpHeader: x-forwarded-for
+  trustedProxies:
+    - "127.0.0.1"
+    - "::ffff:127.0.0.1"
+    - "::1"
+    - "172.30.0.1"
+    - "::ffff:172.30.0.1"
+    - "172.30.0.5"
+    - "::ffff:172.30.0.5"
+
+# Retention: purge events older than 365 days. Kind 62 (request to vanish)
+# is always excluded by the relay's own purge logic.
+limits:
+  event:
+    retention:
+      maxDays: 365
+
+# Admin UI/API disabled by default. Enable deliberately (and read the
+# nostream CONFIGURATION.md) before exposing it.
+admin:
+  enabled: false

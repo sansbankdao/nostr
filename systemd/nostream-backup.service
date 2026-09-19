@@ -1,0 +1,14 @@
+# systemd/nostream-backup.service
+#
+# One-shot PostgreSQL backup for the Sansbank DAO Nostr relay.
+# Installed to /etc/systemd/system/ by scripts/install-backup-units.sh.
+
+[Unit]
+Description=nostream PostgreSQL backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nostream
+ExecStart=/opt/nostream/scripts/backup-db.sh

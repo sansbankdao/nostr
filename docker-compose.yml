@@ -1,0 +1,212 @@
+# docker-compose.yml
+#
+# Sansbank DAO shared Nostr relay (nostream).
+# Deployed on the `nostr` VPS at wss://nostr.sansbank.org
+#
+# Services:
+#   caddy            - TLS termination (Let's Encrypt) + static NIP-05 + WS reverse proxy
+#   nostream         - the relay (ghcr.io/cameri/nostream, pinned)
+#   nostream-db      - PostgreSQL 15 (event store)
+#   nostream-cache   - Redis 7 (verification / NIP-05 cache)
+#   nostream-migrate - one-shot DB migration runner
+#   otel-collector   - OTLP -> Prometheus bridge
+#   prometheus       - metrics store
+#   grafana          - dashboards (loopback only)
+#
+# Run from the repository root on the VPS: docker compose up -d
+
+services:
+  caddy:
+    # caddy:2 is pinned by digest comment; use the stable major tag.
+    image: caddy:2
+    container_name: nostr-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./well-known:/srv/.well-known:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 128m
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.5
+
+  nostream:
+    image: ghcr.io/cameri/nostream:v3.0.0
+    container_name: nostream
+    env_file: .env
+    environment:
+      RELAY_PORT: 8008
+      NOSTR_CONFIG_DIR: /home/node/.nostr
+      DB_HOST: nostream-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_MIN_POOL_SIZE: ${DB_MIN_POOL_SIZE:-4}
+      DB_MAX_POOL_SIZE: ${DB_MAX_POOL_SIZE:-16}
+      DB_ACQUIRE_CONNECTION_TIMEOUT: ${DB_ACQUIRE_CONNECTION_TIMEOUT:-60000}
+      REDIS_HOST: nostream-cache
+      REDIS_PORT: 6379
+      REDIS_USER: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      READ_REPLICA_ENABLED: 'false'
+      WORKER_COUNT: ${WORKER_COUNT:-2}
+      OTEL_SERVICE_NAME: nostream
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      PROMETHEUS_URL: http://prometheus:9090
+      GRAFANA_URL: http://grafana:3000
+    user: node:node
+    volumes:
+      - ${PWD}/.nostr:/home/node/.nostr
+    ports:
+      - 127.0.0.1:8008:8008
+    depends_on:
+      nostream-cache:
+        condition: service_healthy
+      nostream-db:
+        condition: service_healthy
+      nostream-migrate:
+        condition: service_completed_successfully
+    restart: on-failure
+    stop_grace_period: 45s
+    mem_limit: 1g
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.2
+
+  nostream-db:
+    image: postgres:15
+    container_name: nostream-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ${PWD}/.nostr/data:/var/lib/postgresql/data
+      - ${PWD}/.nostr/db-logs:/var/log/postgresql
+      - ./postgresql.conf:/postgresql.conf
+    command: postgres -c 'config_file=/postgresql.conf'
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 360s
+    mem_limit: 1g
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.3
+
+  nostream-cache:
+    image: redis:7.0.5-alpine3.16
+    container_name: nostream-cache
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - cache:/data
+    command: sh -c 'redis-server --loglevel warning --requirepass "$$REDIS_PASSWORD"'
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" ping | grep PONG']
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.4
+
+  nostream-migrate:
+    image: ghcr.io/cameri/nostream:v3.0.0
+    container_name: nostream-migrate
+    user: node:node
+    command: ['node_modules/.bin/knex', 'migrate:latest']
+    environment:
+      DB_HOST: nostream-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+    depends_on:
+      nostream-db:
+        condition: service_healthy
+    networks:
+      nostr:
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.105.0
+    container_name: nostr-otel-collector
+    command: ['--config=/etc/otelcol-contrib/collector-config.yaml']
+    volumes:
+      - ./monitoring/otel-collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
+    restart: unless-stopped
+    mem_limit: 128m
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.6
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: nostr-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - ./monitoring/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - 127.0.0.1:9090:9090
+    depends_on:
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped
+    mem_limit: 256m
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.7
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: nostr-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: 'true'
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://127.0.0.1:7777}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - 127.0.0.1:7777:3000
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    mem_limit: 384m
+    networks:
+      nostr:
+        ipv4_address: 172.30.0.8
+
+networks:
+  nostr:
+    name: nostr
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  cache:
+  prometheus-data:
+  grafana-data:
+  caddy-data:
+  caddy-config:

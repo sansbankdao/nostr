@@ -1,0 +1,14 @@
+# systemd/nostream-backup.timer
+#
+# Runs the nostream PostgreSQL backup daily at 03:15 UTC.
+# Installed to /etc/systemd/system/ by scripts/install-backup-units.sh.
+
+[Unit]
+Description=Daily nostream PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

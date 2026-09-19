@@ -1,0 +1,14 @@
+# .gitignore
+
+# Secrets and runtime state (never commit)
+.env
+.nostr/
+
+# Local backups
+backups/
+*.dump
+*.dump.gz
+
+# Editor / OS noise
+*.swp
+.DS_Store
