@@ -28,11 +28,22 @@ Caddy also writes a rolling access log inside the `caddy-data` volume at
 
 ## Upgrade the relay
 
-The image is pinned in `docker-compose.yml`
-(`ghcr.io/cameri/nostream:v3.0.0`). To move to a new release:
+The image is pinned by digest in `docker-compose.yml`
+(`ghcr.io/cameri/nostream@sha256:de86cc75…`, the `:main` build). Do not pin the
+`v3.0.0` tag: that image is missing `/app/knexfile.js` and `/app/migrations`,
+so `nostream-migrate` fails with `No configuration file found` and the relay
+starts against an empty database. To move to a new release:
 
-1. Edit the tag in `docker-compose.yml`.
-2. Run:
+1. Resolve the digest of the desired build:
+
+```bash
+sudo docker pull ghcr.io/cameri/nostream:main
+sudo docker image inspect ghcr.io/cameri/nostream:main --format '{{index .RepoDigests 0}}'
+```
+
+2. Replace the `image:` value on both the `nostream` and `nostream-migrate`
+   services in `docker-compose.yml`.
+3. Run:
 
 ```bash
 ./scripts/upgrade.sh
@@ -41,6 +52,23 @@ The image is pinned in `docker-compose.yml`
 `upgrade.sh` pulls the image and recreates `nostream-migrate` (so schema
 migrations run) followed by `nostream`. PostgreSQL and Redis data volumes are
 untouched.
+
+### Bind-mounted config files
+
+`Caddyfile`, `postgresql.conf` and the files under `monitoring/` are bind
+mounts, not part of an image. `docker compose up -d` does **not** restart a
+container when only a bind-mounted file changes, so the running container keeps
+the old file. After editing one:
+
+| File changed | Required command |
+|---|---|
+| `Caddyfile` | `docker compose restart caddy` |
+| `postgresql.conf` | `docker compose restart nostream-db` |
+| `monitoring/*.yaml` | `docker compose restart otel-collector prometheus` |
+
+The contents of `well-known/` are served from the bind mount on each request,
+so a NIP-05 update needs no restart. Confirm what a container actually sees
+with `docker compose exec caddy cat /etc/caddy/Caddyfile`.
 
 ## Backups
 

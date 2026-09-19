@@ -31,6 +31,8 @@ nip05:
   domainWhitelist:
     - sansbank.org
     - nostr.sansbank.org
+    - sansbank.dev
+    - nostr.sansbank.dev
 ```
 
 `enabled` means the relay requires a verified NIP-05 for publishing (kind `0`
@@ -52,23 +54,27 @@ It ships **empty**:
 ```
 
 Populate `names` with `"name": "<hex pubkey>"` entries, and `relays` with the
-same pubkeys listing `wss://nostr.sansbank.org`. Names use only `a-z0-9-_.`
-and lowercase is required.
+same pubkeys listing the relay URLs (`wss://nostr.sansbank.org` and
+`wss://nostr.sansbank.dev`). Names use only `a-z0-9-_.` and lowercase is
+required.
 
 ## Where it is served
 
 1. **`https://nostr.sansbank.org/.well-known/nostr.json`** — served by Caddy
    from this repository (see the `handle /.well-known/nostr.json` block in
    `Caddyfile`). This is the path Sansbank DAO controls directly.
-2. **`https://sansbank.org/.well-known/nostr.json`** — the primary domain is
+2. **`https://nostr.sansbank.dev/.well-known/nostr.json`** — alias hostname,
+   also served by Caddy from this repository (same file, separate Let's
+   Encrypt certificate).
+3. **`https://sansbank.org/.well-known/nostr.json`** — the primary domain is
    fronted by Cloudflare and points to a different origin. The same file must
    be published there by whoever operates the primary site. Verified on
    2026-09-19: `sansbank.org` resolves to Cloudflare (`172.64.80.1`) and
    `/.well-known/nostr.json` returns `404`.
 
-Because both domains are allow-listed, an identity published on either resolves.
-An identity on `sansbank.org` only verifies once the file is live on the
-primary origin.
+Because all four domains are allow-listed, an identity published on any of
+them resolves. An identity on `sansbank.org` only verifies once the file is
+live on the primary origin.
 
 ## Adding an identity
 

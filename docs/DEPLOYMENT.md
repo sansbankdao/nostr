@@ -7,8 +7,9 @@ First-time setup of the shared relay on the `nostr` VPS.
 ## 0. Prerequisites
 
 - SSH access to `ubuntu@nostr` (the host resolves via `~/.ssh/config`).
-- DNS: `nostr.sansbank.org` **A** → the VPS public IP, DNS-only
-  (grey cloud). Verified target IP for this environment: `172.81.181.31`.
+- DNS: `nostr.sansbank.org` and `nostr.sansbank.dev` **A** records → the VPS
+  public IP, DNS-only (grey cloud). Verified target IP for this environment:
+  `172.81.181.31`.
 - Host: Ubuntu 26.04, 2 vCPU, 3.8 GiB RAM, 33 GiB disk.
 
 ## 1. Base packages
@@ -72,8 +73,16 @@ cannot publish. See [`NIP05.md`](NIP05.md).
 ```
 
 This creates `.nostr/`, installs `.nostr/settings.yaml` from
-`config/settings.yaml`, pulls `ghcr.io/cameri/nostream:v3.0.0`, runs the
+`config/settings.yaml`, pulls the pinned nostream image (by digest), runs the
 migration container, and starts the stack.
+
+Confirm the migrations actually applied — this is the failure mode of the
+`v3.0.0` tag image, which lacks `/app/knexfile.js` and `/app/migrations`:
+
+```bash
+docker compose run --rm nostream-migrate    # expect: "Batch 1 run: 34 migrations"
+docker compose exec -T nostream-db psql -U nostr_ts_relay -d nostr_ts_relay -c '\dt'
+```
 
 ## 8. Verify
 
@@ -82,9 +91,11 @@ docker compose ps
 curl -s http://127.0.0.1:8008/readyz
 curl -s -H 'Accept: application/nostr+json' http://127.0.0.1:8008/ | jq .
 curl -s https://nostr.sansbank.org/.well-known/nostr.json | jq .
+curl -s https://nostr.sansbank.dev/.well-known/nostr.json | jq .
 ```
 
-Caddy obtains the Let's Encrypt certificate on first request; watch it with:
+Caddy obtains one Let's Encrypt certificate per hostname on first request;
+watch it with:
 
 ```bash
 docker compose logs -f caddy
@@ -109,5 +120,8 @@ git pull
 ./scripts/upgrade.sh       # only needed to recreate the relay image
 ```
 
-When the nostream image tag in `docker-compose.yml` changes, run
-`./scripts/upgrade.sh` so the migration container re-runs.
+When the nostream image digest in `docker-compose.yml` changes, run
+`./scripts/upgrade.sh` so the migration container re-runs. When only a
+bind-mounted file changes (`Caddyfile`, `postgresql.conf`, `monitoring/`),
+that file is not applied by `docker compose up -d` — restart the owning
+container (see `docs/OPERATIONS.md` § Bind-mounted config files).

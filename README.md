@@ -3,7 +3,8 @@
 # Sansbank DAO — Nostr Relay
 
 A shared [Nostr](https://github.com/nostr-protocol/nostr) relay for all
-Sansbank DAO projects, served at **`wss://nostr.sansbank.org`**.
+Sansbank DAO projects, served at **`wss://nostr.sansbank.org`** with the alias
+**`wss://nostr.sansbank.dev`**.
 
 One relay instance, operated once, used by every project. Per-project
 identity is provided by [NIP-05](https://github.com/nostr-protocol/nips/blob/master/05.md)
@@ -14,7 +15,7 @@ identifiers such as `treasury@nostr.sansbank.org`, not by separate relays.
 | Component | Image | Role |
 |---|---|---|
 | [Caddy](https://caddyserver.com/) | `caddy:2` | TLS (Let's Encrypt), NIP-05 static file, WebSocket reverse proxy |
-| [nostream](https://github.com/Cameri/nostream) | `ghcr.io/cameri/nostream:v3.0.0` | Nostr relay (NIP-01 + more) |
+| [nostream](https://github.com/Cameri/nostream) | `ghcr.io/cameri/nostream@sha256:de86cc75…` | Nostr relay (NIP-01 + more) |
 | PostgreSQL | `postgres:15` | Event store |
 | Redis | `redis:7.0.5-alpine3.16` | NIP-05 verification cache |
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.105.0` | OTLP → Prometheus bridge |
@@ -33,8 +34,9 @@ Internet ─────────────▶ Caddy ───────�
 
 - **Reads:** open to anyone.
 - **Writes:** NIP-05-gated — only authors with a verified NIP-05 identifier
-  at `sansbank.org` or `nostr.sansbank.org` may publish (kind `0` metadata
-  excepted). Configured in [`config/settings.yaml`](config/settings.yaml).
+  at `sansbank.org`, `nostr.sansbank.org`, `sansbank.dev` or
+  `nostr.sansbank.dev` may publish (kind `0` metadata excepted). Configured in
+  [`config/settings.yaml`](config/settings.yaml).
 - **NIP-42:** disabled by decision.
 - **Retention:** events older than **365 days** are purged.
 - **Media:** not hosted here — files are served from Evolution Drive.
@@ -43,10 +45,15 @@ Internet ─────────────▶ Caddy ───────�
 ## Requirements
 
 - The `nostr` VPS: Ubuntu 26.04, 2 vCPU, 3.8 GiB RAM, 33 GiB disk.
-- DNS: `nostr.sansbank.org` **A** record → the VPS public IP, **DNS-only
-  (grey cloud)**. Cloudflare proxying must stay off so ACME and WebSockets
-  reach the origin directly.
+- DNS: `nostr.sansbank.org` and `nostr.sansbank.dev` **A** records → the VPS
+  public IP, **DNS-only (grey cloud)**. Cloudflare proxying must stay off so
+  ACME and WebSockets reach the origin directly.
 - Inbound TCP `80`, `443` and UDP `443` open.
+
+The relay image is pinned by **digest**, not by the `v3.0.0` tag: the tag image
+ships without `/app/knexfile.js` and `/app/migrations`, so `nostream-migrate`
+exits 1 and the relay starts against an empty schema. The pinned `:main`
+digest contains both.
 
 ## Documentation
 
@@ -86,10 +93,10 @@ curl -s https://nostr.sansbank.org/.well-known/nostr.json | jq .
 ## NIP-05 identities
 
 The identity document lives at [`well-known/nostr.json`](well-known/nostr.json).
-Caddy serves it at `https://nostr.sansbank.org/.well-known/nostr.json`; the
-same file is intended to be mirrored to
-`https://sansbank.org/.well-known/nostr.json`. Names map to **lowercase hex**
-public keys. See [`docs/NIP05.md`](docs/NIP05.md).
+Caddy serves it at `https://nostr.sansbank.org/.well-known/nostr.json` and
+`https://nostr.sansbank.dev/.well-known/nostr.json`; the same file is intended
+to be mirrored to `https://sansbank.org/.well-known/nostr.json`. Names map to
+**lowercase hex** public keys. See [`docs/NIP05.md`](docs/NIP05.md).
 
 ## Repository layout
 
